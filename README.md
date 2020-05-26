@@ -1,5 +1,7 @@
 # Telegram Lawyer Jokes Bot @lawyer_jokes_bot
 
+![](intro_demo.gif)
+
 ## Mission Statement
 This is a Telegram bot to lighten up your day with witty, hilarious, and totally laughable lawyer jokes. Best for law students and humans.
 
