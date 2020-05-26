@@ -1,0 +1,40 @@
+version: '2.1'
+
+services:
+    mongo: 
+        image: mongo:bionic
+        restart: always
+        environment: 
+            MONGO_INITDB_ROOT_USERNAME: root
+            MONGO_INITDB_ROOT_PASSWORD: pass
+        volumes: 
+            - './mongo-volume:/data/db'
+        ports: 
+            - '27017-27019'
+        healthcheck:
+            test: service mongod status
+            interval: 2s
+            timeout: 5s
+            retries: 30
+
+    mongo-express: 
+        image: mongo-express
+        restart: always
+        ports: 
+            - 1999:8081
+        depends_on: 
+            - mongo
+        environment: 
+            ME_CONFIG_MONGODB_ADMINUSERNAME: root
+            ME_CONFIG_MONGODB_ADMINPASSWORD: pass
+            ME_CONFIG_BASICAUTH_USERNAME: ysong
+            ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_BASIC_AUTH_PASSWORD}
+    
+    node: 
+        build: 
+            context: .
+            dockerfile: ./Dockerfile
+        depends_on: 
+            mongo: 
+                condition: service_healthy
+    

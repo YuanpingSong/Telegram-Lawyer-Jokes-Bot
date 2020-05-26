@@ -1,0 +1,36 @@
+{
+  "name": "tg_lawyer_jokes_bot",
+  "version": "1.0.0",
+  "description": "A Telegram bot to lighten up your day with lawyer jokes.",
+  "main": "bot.js",
+  "dependencies": {
+    "dotenv": "^8.2.0",
+    "email-templates": "^7.0.5",
+    "mongodb": "^3.5.7",
+    "node-telegram-bot-api": "^0.40.0",
+    "nodemailer": "^6.4.6",
+    "nodemailer-postmark-transport": "^3.0.0",
+    "pug": "^2.0.4"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "node bot.js "
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YuanpingSong/Telegram-Lawyer-Jokes-Bot.git"
+  },
+  "keywords": [
+    "Telegram",
+    "Bot",
+    "Jokes",
+    "Lawyer",
+    "Jokes"
+  ],
+  "author": "Yuanping Song <yuanping.song@outlook.com> (https://songyp.com)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/YuanpingSong/Telegram-Lawyer-Jokes-Bot/issues"
+  },
+  "homepage": "https://github.com/YuanpingSong/Telegram-Lawyer-Jokes-Bot#readme"
+}
