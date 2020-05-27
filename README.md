@@ -2,6 +2,8 @@
 
 <p align="center">
 <img src="intro_demo.gif">
+<img src="intro_demo_2.gif">
+<img src="intro_demo_3.gif">
 </p>
 
 ## Mission Statement
