@@ -1,9 +1,9 @@
 # Telegram Lawyer Jokes Bot @lawyer_jokes_bot
 
 <p align="center">
-<img src="intro_demo.gif" width=300 height=620.61>
-<img src="intro_demo_2.gif" width=300 height=620.61>
-<img src="intro_demo_3.gif" width=300 height=620.61>
+<img src="intro_demo.gif" width=280 height=580>
+<img src="intro_demo_2.gif" width=280 height=580>
+<img src="intro_demo_3.gif" width=280 height=580>
 </p>
 
 ## Mission Statement
