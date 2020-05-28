@@ -61,3 +61,6 @@ to manage environmental variables, which provide settings such as API keys, data
     ```
 3. Run `docker-compose up --build` in the root directory of the project to build the containers for the first time and start them.
 4. Enjoy!
+
+## License
+MIT
