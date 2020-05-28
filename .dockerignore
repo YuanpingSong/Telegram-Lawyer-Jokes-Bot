@@ -1,2 +1,4 @@
 node_modules
+mongo-volume
 npm-debug.log
+*.gif

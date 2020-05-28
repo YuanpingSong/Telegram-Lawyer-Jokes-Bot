@@ -3,6 +3,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const Email = require('email-templates');
 const nodemailer = require('nodemailer');
 const postmarkTransport = require('nodemailer-postmark-transport');
+const logger = require('pino')();
 
 const token = process.env.TG_TOKEN;
 
@@ -48,20 +49,19 @@ const email = new Email({
         if (timeDelta < 0) {
             timeDelta += 24 * 60 * 60 * 1000;
         }
-        console.log(`Timeout: ${timeDelta/1000/60/60} hours`);
         subscriptions[user.chatId] = {timeout: 
             setTimeout(() => {
                 nextJoke(user.subscription.msg, undefined, user.id)
                 subscriptions[user.chatId] = setInterval( () => { nextJoke(user.subscription.msg, undefined, user.id) }, 24 * 60 * 60 * 1000);
             }, timeDelta)};
     }))
-    console.log(`restored ${active_subscriptions.length} subscriptions`);
-    console.log(subscriptions);
-})()
-
+    logger.info(`restored ${active_subscriptions.length} subscriptions`);
+    logger.info(subscriptions);
+})();
     
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'start' });
     const nickname = msg.chat.first_name || msg.chat.last_name || msg.chat.username || 'stranger';
     const welcomString = `Hi ${nickname}\\. I am the *Lawyer Jokes bot*\\. I can help you find, enjoy, share, and compose everything humorous about law and lawyers\\.\n` + 
                          '\n' + 
@@ -96,13 +96,16 @@ bot.onText(/\/start/, async (msg) => {
     await client.close(); 
 
     await bot.sendMessage(chatId, welcomString, {parse_mode: "MarkdownV2"} );
+
+    event_logger.info('account created');
 });
 
 async function compose(msg, _, user_id) {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'compose' });
     const resp = await bot.sendMessage(chatId, 'Have something to share? Make your contribution now by replying to this message!');
 
-
+    event_logger.info('oncompose');
     bot.onReplyToMessage(chatId, resp.message_id, async (msg) => {
         try {
             await email
@@ -118,11 +121,12 @@ async function compose(msg, _, user_id) {
                 }
             });
         } catch (err) {
-            console.log(err);
+            event_logger.error(err);
         }
        
 
         await bot.sendMessage(msg.chat.id, 'Thank you for your contribution! The administrator has been notified. Your joke will be included in our library shortly if it makes the administrator laugh!')
+        event_logger.info({content: msg.text }, 'composed');
     })
 }
 
@@ -134,10 +138,14 @@ bot.onText(/\/get\s*(.*)/, async (msg, match) => {
     const client = await MongoClient.connect(url, {useNewUrlParser: true})
     const db = client.db(dbName);
 
-    const joke = await db.collection('jokes').findOne({ id: Number(match[1])-1});
+    const event_logger = logger.child({chatId: chatId, event: 'get' });
+
+    const jokeId =  Number(match[1])-1;
+    const joke = await db.collection('jokes').findOne({ id: jokeId });
 
     if (!joke) {
         await bot.sendMessage(chatId, 'Sorry, the joke number is not valid.');
+        event_logger.info(`joke number not valid: ${jokeId}`);
     } else {
         const responseString = `<b>Joke #${joke.id+1}</b>\n\n${joke.text}`;
         await bot.sendMessage(chatId, responseString, 
@@ -147,11 +155,16 @@ bot.onText(/\/get\s*(.*)/, async (msg, match) => {
                         "inline_keyboard": [[{text: 'Haha😀', callback_data: `+${joke.id}`}, {text: 'Meh😒', callback_data: `-${joke.id}`}]]
                 } 
             });
+        
+        event_logger.info({jokeId: jokeId}, `responded`);
     }
+    await client.close();
 });
 
 async function nextJoke(msg, match, userId) {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'next' });
+
     const client = await MongoClient.connect(url, {useNewUrlParser: true})
                     .catch(err => { console.log(err); });
     const db = client.db(dbName);
@@ -167,6 +180,7 @@ async function nextJoke(msg, match, userId) {
                         "inline_keyboard": [[{text: 'Haha😀', callback_data: `+${joke.id}`}, {text: 'Meh😒', callback_data: `-${joke.id}`}]]
                 } 
             });
+        event_logger.info(`responded with: ${joke.id}`);
     } else {
         const endReachedString = `<b>🎉🎉Congratulations!🎉🎉</b>\n\nYou have finished all jokes in our library. Now consider restarting from the begining or contributing your own?`;
         bot.sendMessage(chatId, endReachedString, 
@@ -175,13 +189,17 @@ async function nextJoke(msg, match, userId) {
                     "inline_keyboard": [[{text: 'Restart', callback_data: 'a'}, {text: 'Compose', callback_data: 'b'}]]
                 }
             } );
+        event_logger.info(`end reached`);
     }
+    await client.close();
 }
 
 bot.onText(/\/next/, nextJoke);
 
 bot.onText(/\/search\s*(.*)/, async (msg, match) => {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'search' });
+
     const client = await MongoClient.connect(url, {useNewUrlParser: true})
     const db = client.db(dbName);
 
@@ -194,7 +212,8 @@ bot.onText(/\/search\s*(.*)/, async (msg, match) => {
         })
         .project({ score: { $meta: "textScore" } })
         .sort( { score: { $meta: "textScore" } } ).toArray();
-    
+    await client.close();
+
     let resultsString = '<b> Search Results </b>\n\n';
     res.slice(0, 10).forEach((joke, index) => {
         resultsString += `<b> Joke #${joke.id+1} </b> - `
@@ -208,32 +227,41 @@ bot.onText(/\/search\s*(.*)/, async (msg, match) => {
     })
 
     await bot.sendMessage(chatId, resultsString, { parse_mode: 'HTML' });
+    event_logger.info({term: match[1], resultCount: res.length });
 });
 
 bot.onText(/\/stats/, async (msg) => {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'stats' });
+
     const client = await MongoClient.connect(url, {useNewUrlParser: true})
     const db = client.db(dbName);
     const user = await db.collection('users').findOne({id: msg.from.id});
     
     const nickname = msg.chat.first_name || msg.chat.last_name || msg.chat.username || 'stranger';
     const jokesCount = await db.collection('jokes').countDocuments();
+    await client.close();
     const ratingsCount = Object.keys(user.ratings).length;
     const posRatingsCount = Object.values(user.ratings).filter(r => r == 1).length;
     const statString = `<b>${nickname}</b>, you have viewed <b>${user.cursor}</b> out of <b>${jokesCount}</b> jokes. You gave out <b>${ratingsCount}</b> ratings, of which <b>${posRatingsCount}</b> were upvote(s) and <b>${ratingsCount-posRatingsCount}</b> were downvote(s)`;
     
     await bot.sendMessage(chatId, statString, { parse_mode: 'HTML' } );
+    event_logger.info({})
 });
 
 bot.onText(/\/subscribe/, async (msg) => {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'subscribe' });
     await bot.sendMessage(chatId, 'Would you like to hear a joke at this time every day?', { reply_markup: {
         "inline_keyboard": [[{text: 'For Sure!', callback_data: 'e'}, {text: 'Lemme think', callback_data: 'f'}]]
     } });
+    event_logger.info('prompt sent');
 });
 
 bot.onText(/\/unsubscribe/, async (msg) => {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'unsubscribe' });
+
     if (subscriptions[chatId]) {
         if (subscriptions[chatId].timeout) clearTimeout(subscriptions[chatId].timeout);
         else clearInterval(subscriptions[chatId].interval);
@@ -241,17 +269,22 @@ bot.onText(/\/unsubscribe/, async (msg) => {
         const db = client.db(dbName);
         delete subscriptions[chatId];
         await db.collection('users').updateOne( { id: msg.from.id }, { $set: { subscription: undefined }});
+        await client.close();
         await bot.sendMessage(chatId, 'Successfully unsubscribed from daily jokes.')
+        event_logger.info('unsubscribed');
     } else {
         await bot.sendMessage(chatId, 'You do not have an active subscription');
+        event_logger.info('no active subscription');
     }
 });
 
 bot.onText(/\/top\s*([0-9]*)/, async (msg, match) => {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'top' });
     const client = await MongoClient.connect(url, {useNewUrlParser: true})
     const db = client.db(dbName);
     const jokes = await db.collection('jokes').find({});
+    
 
     const n = Number(match[1]) || 10;
     
@@ -267,25 +300,33 @@ bot.onText(/\/top\s*([0-9]*)/, async (msg, match) => {
     })
     
     await bot.sendMessage(chatId, topTenString, { parse_mode: 'HTML' } );
+    await client.close();
+    event_logger.info({n: n});
 });
 
 bot.onText(/\/reset/, async (msg, match) => {
     const chatId = msg.chat.id;
+    const event_logger = logger.child({chatId: chatId, event: 'reset' });
     const client = await MongoClient.connect(url, {useNewUrlParser: true})
     const db = client.db(dbName);
 
     await bot.sendMessage(chatId, 'All of your history will be deleted, including ratings. Do you confirm?', { reply_markup: {
         "inline_keyboard": [[{text: 'Confirm', callback_data: 'c'}, {text: 'Cancel', callback_data: 'd'}]]
     } });
+    await client.close();
+    event_logger.info('prompt sent');
 });
 
 bot.on("callback_query", async (query) => {
     const client = await MongoClient.connect(url, {useNewUrlParser: true})
     const db = client.db(dbName);
     
+    const event_logger = logger.child({chatId: query.message.chat.id, event: 'callback_query' });
+    
     switch (query.data[0]) {
         case 'b': 
             compose(query.message, undefined, query.from.id);
+            event_logger.info('compose');
             break;
         
         case 'a': 
@@ -304,12 +345,14 @@ bot.on("callback_query", async (query) => {
             await bot.deleteMessage(query.message.chat.id, query.message.message_id);
             await bot.sendMessage(query.message.chat.id, 'Your history has been reset succeessfully!');
             await bot.answerCallbackQuery(query.id, { text: 'Reset' });
+            event_logger.info('reset');
             break;
         
         case 'd':
             
             await bot.deleteMessage(query.message.chat.id, query.message.message_id);
             await bot.answerCallbackQuery(query.id, { text: 'Canceled' });
+            event_logger.info('cancled');
             break;
         
         case 'e':
@@ -319,11 +362,13 @@ bot.on("callback_query", async (query) => {
             await bot.answerCallbackQuery(query.id, { text: 'Scheduled' });
             await db.collection('users').updateOne( { id: query.from.id }, { $set: { subscription: {time: tomorrow, msg: query.message} }});
             subscriptions[query.message.chat.id] = { interval: setInterval( () => { nextJoke(query.message, undefined, query.from.id) }, 24 * 60 * 60 * 1000) };
+            event_logger.info('subscribed');
             break;
         
         case 'f':
             await bot.sendMessage(query.message.chat.id, `No problem! Your can start a new subscription with /subscribe anytime.`, { parse_mode: 'HTML' });
             await bot.answerCallbackQuery(query.id, { text: '' });
+            event_logger.info('subscription aborted');
             break;
         
         default: 
@@ -349,8 +394,10 @@ bot.on("callback_query", async (query) => {
             await db.collection('jokes').updateOne({id: joke.id }, { $set: { upvotes: joke.upvotes, downvotes: joke.downvotes }});
             
             const answerText = isUpVote ? 'Upvoted' : 'Downvoted';
-            bot.answerCallbackQuery(query.id, { text: answerText});
+            await bot.answerCallbackQuery(query.id, { text: answerText});
+            event_logger.info({ jokeId: jokeId, rating: isUpVote ? 1: -1 }, 'voted');
     }
+    await client.close()
 });
 
 bot.on("polling_error", (err) => console.log(err));
